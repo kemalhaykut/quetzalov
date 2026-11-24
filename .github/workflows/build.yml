@@ -1,0 +1,66 @@
+name: Windows uygulaması oluştur
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+          cache: true
+
+      - name: Windows projesini oluştur
+        shell: pwsh
+        run: |
+          flutter create --project-name quetzalov --org com.quetzalov --platforms windows .
+          Remove-Item -Recurse -Force test -ErrorAction SilentlyContinue
+          python tools/patch_windows.py
+
+      - name: Paketler ve ikon
+        shell: pwsh
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons
+
+      - name: Kod kontrolü
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Uygulamayı derle
+        run: flutter build windows --release
+
+      - name: Kurulum dosyası oluştur
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=1.0.${{ github.run_number }}" installer\quetzalov.iss
+
+      - name: Taşınabilir sürüm (zip)
+        shell: pwsh
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath Quetzalov-Tasinabilir.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Quetzalov
+          path: |
+            Quetzalov-Kurulum.exe
+            Quetzalov-Tasinabilir.zip
+
+      - name: Sürüm yayınla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Quetzalov v1.0.${{ github.run_number }}
+          files: |
+            Quetzalov-Kurulum.exe
+            Quetzalov-Tasinabilir.zip
