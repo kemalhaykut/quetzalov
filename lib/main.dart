@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 import 'login_page.dart';
@@ -7,11 +9,20 @@ import 'player_screen.dart';
 import 'shell.dart';
 import 'store.dart';
 import 'theme.dart';
+import 'tv/tv_app.dart';
 import 'window_ctl.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  // Android TV (Mi Box): kumandayla kullanılan ayrı arayüz
+  if (Platform.isAndroid) {
+    final d = await getApplicationSupportDirectory();
+    await store.init(dataDir: d.path);
+    playback.init();
+    runApp(const TvApp());
+    return;
+  }
   await windowManager.ensureInitialized();
   await store.init();
   playback.init();

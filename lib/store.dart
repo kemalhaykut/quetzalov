@@ -33,9 +33,14 @@ class Store extends ChangeNotifier {
   final Map<Section, List<Item>> items = {};
   final Map<Section, Future<void>> _loading = {};
 
-  Future<void> init() async {
-    final base = Platform.environment['APPDATA'] ?? Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    dir = Directory('$base${Platform.pathSeparator}Quetzalov');
+  /// [dataDir] verilirse (Android TV) oraya, yoksa %APPDATA%\Quetzalov altına kaydeder.
+  Future<void> init({String? dataDir}) async {
+    if (dataDir != null) {
+      dir = Directory(dataDir);
+    } else {
+      final base = Platform.environment['APPDATA'] ?? Platform.environment['HOME'] ?? Directory.systemTemp.path;
+      dir = Directory('$base${Platform.pathSeparator}Quetzalov');
+    }
     if (!dir.existsSync()) dir.createSync(recursive: true);
     final j = _read('config.json');
     if (j is Map) {

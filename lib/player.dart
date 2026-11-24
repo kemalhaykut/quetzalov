@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,9 @@ import 'theme.dart';
 import 'window_ctl.dart';
 
 /// Tek bir oynatıcı (mpv) tüm uygulamada paylaşılır.
+/// Android TV'de donanım çözücü MediaCodec, Windows'ta otomatik (güvenli).
+String get _hw => Platform.isAndroid ? 'mediacodec' : 'auto-safe';
+
 class Playback extends ChangeNotifier {
   late final Player player;
   late final VideoController video;
@@ -42,7 +46,7 @@ class Playback extends ChangeNotifier {
     video = VideoController(
       player,
       configuration: VideoControllerConfiguration(
-        hwdec: store.hwdec ? 'auto-safe' : 'no',
+        hwdec: store.hwdec ? _hw : 'no',
         enableHardwareAcceleration: store.hwdec,
       ),
     );
@@ -94,7 +98,7 @@ class Playback extends ChangeNotifier {
     await _set('demuxer-readahead-secs', live ? ['4', '8', '15'][lvl] : ['20', '60', '120'][lvl]);
     await _set('stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=6');
-    await _set('hwdec', store.hwdec ? 'auto-safe' : 'no');
+    await _set('hwdec', store.hwdec ? _hw : 'no');
     if (store.subLang == 'no') {
       await _set('sid', 'no');
     } else {
