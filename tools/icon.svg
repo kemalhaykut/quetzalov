@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#3a160d"/>
+      <stop offset="0.55" stop-color="#14090c"/>
+      <stop offset="1" stop-color="#0b0b10"/>
+    </radialGradient>
+    <linearGradient id="fire" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#c81d25"/>
+      <stop offset="0.45" stop-color="#ff6a1a"/>
+      <stop offset="1" stop-color="#ffd25a"/>
+    </linearGradient>
+    <linearGradient id="fire2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#ff4d1f"/>
+      <stop offset="1" stop-color="#fff0a8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff8a2a" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ff8a2a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+  <rect width="1024" height="1024" rx="226" fill="url(#bg)"/>
+  <circle cx="512" cy="470" r="380" fill="url(#glow)"/>
+  <!-- kanatlar (sol) -->
+  <g fill="url(#fire)">
+    <path d="M500 520 C 420 470, 330 420, 250 300 C 300 330, 330 335, 350 330 C 290 280, 250 210, 225 130
+             C 300 210, 360 250, 400 262 C 360 200, 345 150, 350 90 C 400 190, 450 260, 505 330 Z"/>
+    <path transform="translate(1024,0) scale(-1,1)" d="M500 520 C 420 470, 330 420, 250 300 C 300 330, 330 335, 350 330 C 290 280, 250 210, 225 130
+             C 300 210, 360 250, 400 262 C 360 200, 345 150, 350 90 C 400 190, 450 260, 505 330 Z"/>
+  </g>
+  <!-- iç kanat tüyleri -->
+  <g fill="url(#fire2)" opacity=".9">
+    <path d="M505 470 C 450 430, 400 390, 360 330 C 410 360, 450 370, 480 372 C 450 330, 430 290, 425 240 C 465 300, 495 340, 512 380 Z"/>
+    <path transform="translate(1024,0) scale(-1,1)" d="M505 470 C 450 430, 400 390, 360 330 C 410 360, 450 370, 480 372 C 450 330, 430 290, 425 240 C 465 300, 495 340, 512 380 Z"/>
+  </g>
+  <!-- gövde -->
+  <path d="M512 300 C 560 330, 575 400, 560 480 C 548 545, 530 600, 512 650 C 494 600, 476 545, 464 480 C 449 400, 464 330, 512 300 Z" fill="url(#fire)"/>
+  <!-- baş ve ibik -->
+  <circle cx="512" cy="280" r="42" fill="url(#fire2)"/>
+  <path d="M500 245 C 490 200, 470 175, 445 160 C 480 165, 500 185, 512 210 C 520 180, 540 160, 575 150 C 548 175, 530 205, 524 245 Z" fill="url(#fire2)"/>
+  <path d="M548 282 L 600 296 L 550 302 Z" fill="#ffd25a"/>
+  <!-- kuyruk alevleri -->
+  <g fill="url(#fire)">
+    <path d="M512 620 C 470 700, 420 760, 350 820 C 420 800, 455 775, 480 750 C 470 810, 450 860, 420 910 C 480 860, 505 800, 512 740 Z"/>
+    <path transform="translate(1024,0) scale(-1,1)" d="M512 620 C 470 700, 420 760, 350 820 C 420 800, 455 775, 480 750 C 470 810, 450 860, 420 910 C 480 860, 505 800, 512 740 Z"/>
+    <path d="M512 640 C 530 720, 530 800, 512 900 C 494 800, 494 720, 512 640 Z" fill="url(#fire2)"/>
+  </g>
+</svg>
