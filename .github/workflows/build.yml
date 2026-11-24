@@ -1,4 +1,4 @@
-name: Windows uygulaması oluştur
+name: Quetzalov (Windows + Android TV)
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           flutter pub get
-          dart run flutter_launcher_icons
+          dart run flutter_launcher_icons -f tools/icons_windows.yaml
 
       - name: Kod kontrolü
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -64,3 +64,50 @@ jobs:
           files: |
             Quetzalov-Kurulum.exe
             Quetzalov-Tasinabilir.zip
+
+  android-tv:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+          cache: true
+
+      - name: Android projesini oluştur
+        run: |
+          flutter create --project-name quetzalov --org com.quetzalov --platforms android .
+          rm -rf test
+          python3 tools/patch_android.py
+          mkdir -p ~/.android
+          if [ -f android_keystore/debug.keystore ]; then cp android_keystore/debug.keystore ~/.android/debug.keystore; fi
+
+      - name: Paketler ve ikon
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons -f tools/icons_android.yaml
+
+      - name: APK derle
+        run: |
+          flutter build apk --release --target-platform android-arm,android-arm64
+          cp build/app/outputs/flutter-apk/app-release.apk Quetzalov-TV.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Quetzalov-TV
+          path: Quetzalov-TV.apk
+
+      - name: Sürüme ekle
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Quetzalov v1.0.${{ github.run_number }}
+          files: Quetzalov-TV.apk
