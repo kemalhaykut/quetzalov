@@ -11,7 +11,7 @@ import 'window_ctl.dart';
 
 /// Tek bir oynatıcı (mpv) tüm uygulamada paylaşılır.
 /// Android TV'de donanım çözücü MediaCodec, Windows'ta otomatik (güvenli).
-String get _hw => Platform.isAndroid ? 'mediacodec' : 'auto-safe';
+String get _hw => Platform.isAndroid ? 'mediacodec-copy' : 'auto-safe';
 
 class Playback extends ChangeNotifier {
   late final Player player;
@@ -56,7 +56,9 @@ class Playback extends ChangeNotifier {
     }));
     _subs.add(player.stream.error.listen((e) {
       debugPrint('mpv hata: $e');
-      if (isLive && !_userStopped) _reconnect('Yayın kesildi, yeniden bağlanıyor…');
+      // mpv bazı önemsiz uyarıları da "hata" olarak bildirir (özellikle Android'de).
+      // Bu yüzden hemen yeniden bağlanmıyoruz: birkaç saniye bekleyip yayın gerçekten durduysa bağlanıyoruz.
+      if (isLive && !_userStopped) _checkStall();
     }));
     _subs.add(player.stream.position.listen((p) {
       // ilerleme varsa yeniden deneme sayacını sıfırla
@@ -185,6 +187,20 @@ class Playback extends ChangeNotifier {
     }
   }
 
+  Timer? _stallTimer;
+
+  /// Yayın gerçekten durdu mu? 6 sn içinde görüntü ilerlemediyse yeniden bağlan.
+  void _checkStall() {
+    if (_stallTimer?.isActive ?? false) return;
+    final u = url;
+    final before = player.state.position;
+    _stallTimer = Timer(const Duration(seconds: 6), () {
+      if (_userStopped || url != u || !isLive) return;
+      final moved = (player.state.position - before).inMilliseconds.abs() > 1500;
+      if (!moved) _reconnect('Yayın kesildi, yeniden bağlanıyor…');
+    });
+  }
+
   Future<void> _reconnect(String msg) async {
     if (!active || _retries >= 8) {
       if (_retries >= 8) {
@@ -219,6 +235,7 @@ class Playback extends ChangeNotifier {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _stallTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
