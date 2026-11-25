@@ -29,6 +29,13 @@ if "LEANBACK_LAUNCHER" not in s:
 if "EnableImpeller" not in s:
     s = s.replace("</application>",
                   '    <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />\n    </application>', 1)
+# Yerel tam ekran oynatıcı ekranı
+if "PlayerActivity" not in s:
+    s = s.replace("</application>",
+                  '    <activity android:name=".PlayerActivity" android:exported="false"\n'
+                  '            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"\n'
+                  '            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|navigation" />\n'
+                  '    </application>', 1)
 man.write_text(s, encoding="utf-8")
 assert "LEANBACK_LAUNCHER" in s, "LEANBACK_LAUNCHER eklenemedi"
 
@@ -64,7 +71,7 @@ acts = list(pathlib.Path("android/app/src/main").rglob("MainActivity.kt"))
 assert acts, "MainActivity.kt bulunamadı"
 act = acts[0]
 pkg = re.search(r"^package\s+([\w.]+)", act.read_text(encoding="utf-8"), re.M).group(1)
-for f in ["MainActivity.kt", "QzPlayer.kt"]:
+for f in ["MainActivity.kt", "QzPlayer.kt", "PlayerActivity.kt"]:
     src = pathlib.Path("tools") / f
     (act.parent / f).write_text(src.read_text(encoding="utf-8").replace("package PKG", "package " + pkg, 1), encoding="utf-8")
 print("Kotlin dosyaları eklendi:", act.parent, pkg)

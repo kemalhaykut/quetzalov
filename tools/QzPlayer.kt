@@ -1,6 +1,8 @@
 package PKG
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -47,6 +49,61 @@ object QzPlayer : Player.Listener {
     private var lastError = ""
     private var endedSeq = 0
     private var tracksSeq = 0
+    private var act: Activity? = null
+    private var pendingLaunch: MethodChannel.Result? = null
+    private var lastOpen: Map<String, Any?> = emptyMap()
+
+    /** Tam ekran yerel oynatıcıyı (PlayerActivity) açar; kapanınca konum ve kanal bilgisini döndürür. */
+    private fun launch(a: Map<String, Any?>, result: MethodChannel.Result) {
+        val activity = act
+        if (activity == null) {
+            result.error("qz", "Etkinlik yok", null)
+            return
+        }
+        pendingLaunch?.success(null)
+        pendingLaunch = result
+        val i = Intent(activity, PlayerActivity::class.java)
+        i.putExtra("live", a["live"] == true)
+        i.putExtra("index", (a["index"] as? Number)?.toInt() ?: 0)
+        i.putExtra("title", (a["title"] as? String) ?: "")
+        i.putExtra("subtitle", (a["subtitle"] as? String) ?: "")
+        @Suppress("UNCHECKED_CAST")
+        fun strs(k: String) = ArrayList((a[k] as? List<Any?>)?.map { "$it" } ?: emptyList())
+        i.putStringArrayListExtra("names", strs("names"))
+        i.putStringArrayListExtra("urls", strs("urls"))
+        i.putStringArrayListExtra("alts", strs("alts"))
+        activity.startActivity(i)
+    }
+
+    fun playerClosed(pos: Long, dur: Long, index: Int) {
+        val r = pendingLaunch
+        pendingLaunch = null
+        r?.success(mapOf("pos" to pos, "dur" to dur, "index" to index))
+    }
+
+    /** Son açılış ayarlarıyla yeni bir adres aç (kanal değiştirme / yeniden bağlanma). */
+    fun openUrl(url: String) {
+        val m = HashMap(lastOpen)
+        m["url"] = url
+        m.remove("start")
+        handle("open", m)
+    }
+
+    fun stopNow() {
+        player?.let {
+            it.stop()
+            it.clearMediaItems()
+        }
+    }
+
+    fun attach(v: PlayerView) {
+        styleSubs(v)
+        if (!views.contains(v)) views.add(v)
+    }
+
+    fun detach(v: PlayerView) {
+        views.remove(v)
+    }
 
     /** Flutter her 400 ms'de bir bunu sorar (olay kanalına güvenmeden). */
     private fun state(): Map<String, Any?> {
@@ -104,6 +161,7 @@ object QzPlayer : Player.Listener {
 
     fun setup(context: Context, engine: FlutterEngine) {
         ctx = context.applicationContext
+        act = context as? Activity
         val messenger = engine.dartExecutor.binaryMessenger
         MethodChannel(messenger, "qz/player").setMethodCallHandler { call, result ->
             try {
@@ -112,6 +170,7 @@ object QzPlayer : Player.Listener {
                 when (call.method) {
                     "state" -> result.success(state())
                     "tracks" -> result.success(tracksMap())
+                    "launch" -> launch(a, result)
                     else -> {
                         handle(call.method, a)
                         result.success(null)
@@ -184,6 +243,7 @@ object QzPlayer : Player.Listener {
     private fun handle(m: String, a: Map<String, Any?>) {
         when (m) {
             "open" -> {
+                lastOpen = HashMap(a)
                 bufferLevel = (a["buffer"] as? Number)?.toInt() ?: 1
                 ua = (a["ua"] as? String) ?: ua
                 (a["subSize"] as? Number)?.let { subSize = it.toFloat(); views.forEach { v -> styleSubs(v) } }
