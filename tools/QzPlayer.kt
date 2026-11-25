@@ -43,6 +43,57 @@ object QzPlayer : Player.Listener {
     private var bufferLevel = 1
     private var ua = "Quetzalov"
     private var subSize = 22f
+    private var errorSeq = 0
+    private var lastError = ""
+    private var endedSeq = 0
+    private var tracksSeq = 0
+
+    /** Flutter her 400 ms'de bir bunu sorar (olay kanalına güvenmeden). */
+    private fun state(): Map<String, Any?> {
+        val p = player
+        val dur = p?.duration ?: 0L
+        return mapOf(
+            "pos" to (p?.currentPosition ?: 0L),
+            "dur" to (if (dur == C.TIME_UNSET || dur < 0) 0L else dur),
+            "buf" to (p?.bufferedPosition ?: 0L),
+            "playing" to (p?.isPlaying ?: false),
+            "buffering" to (p?.playbackState == Player.STATE_BUFFERING),
+            "errorSeq" to errorSeq,
+            "error" to lastError,
+            "endedSeq" to endedSeq,
+            "tracksSeq" to tracksSeq,
+        )
+    }
+
+    private fun tracksMap(): Map<String, Any?> {
+        val p = player ?: return mapOf("list" to emptyList<Any>(), "subOff" to false)
+        val list = ArrayList<Map<String, Any?>>()
+        p.currentTracks.groups.forEachIndexed { gi, g ->
+            val type = when (g.type) {
+                C.TRACK_TYPE_AUDIO -> "audio"
+                C.TRACK_TYPE_TEXT -> "sub"
+                C.TRACK_TYPE_VIDEO -> "video"
+                else -> null
+            } ?: return@forEachIndexed
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                list.add(
+                    mapOf(
+                        "type" to type,
+                        "id" to "$gi:$i",
+                        "label" to f.label,
+                        "lang" to f.language,
+                        "h" to (if (f.height > 0) f.height else null),
+                        "codec" to (f.sampleMimeType ?: f.codecs),
+                        "ch" to (if (f.channelCount > 0) f.channelCount else null),
+                        "sel" to g.isTrackSelected(i),
+                    ),
+                )
+            }
+        }
+        return mapOf("list" to list, "subOff" to p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))
+    }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -58,8 +109,14 @@ object QzPlayer : Player.Listener {
             try {
                 @Suppress("UNCHECKED_CAST")
                 val a = (call.arguments as? Map<String, Any?>) ?: emptyMap()
-                handle(call.method, a)
-                result.success(null)
+                when (call.method) {
+                    "state" -> result.success(state())
+                    "tracks" -> result.success(tracksMap())
+                    else -> {
+                        handle(call.method, a)
+                        result.success(null)
+                    }
+                }
             } catch (e: Throwable) {
                 result.error("qz", e.message, null)
             }
@@ -131,6 +188,8 @@ object QzPlayer : Player.Listener {
                 ua = (a["ua"] as? String) ?: ua
                 (a["subSize"] as? Number)?.let { subSize = it.toFloat(); views.forEach { v -> styleSubs(v) } }
                 val p = ensure()
+                p.stop()
+                p.clearMediaItems()
                 val url = a["url"] as String
                 val subLang = (a["subLang"] as? String) ?: "tur"
                 val audioLang = (a["audioLang"] as? String) ?: ""
@@ -253,11 +312,17 @@ object QzPlayer : Player.Listener {
         )
     }
 
-    override fun onTracksChanged(tracks: Tracks) = sendTracks(tracks)
+    override fun onTracksChanged(tracks: Tracks) {
+        tracksSeq++
+        sendTracks(tracks)
+    }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         sendPos()
-        if (playbackState == Player.STATE_ENDED) send(mapOf("t" to "ended"))
+        if (playbackState == Player.STATE_ENDED) {
+            endedSeq++
+            send(mapOf("t" to "ended"))
+        }
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) = sendPos()
@@ -269,7 +334,9 @@ object QzPlayer : Player.Listener {
             p.prepare()
             return
         }
-        send(mapOf("t" to "error", "msg" to "${error.errorCodeName}: ${error.message}"))
+        errorSeq++
+        lastError = "${error.errorCodeName}: ${error.message}"
+        send(mapOf("t" to "error", "msg" to lastError))
     }
 
     fun styleSubs(v: PlayerView) {
