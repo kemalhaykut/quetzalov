@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../player.dart';
-import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'exo.dart';
 import 'tv_widgets.dart';
+
+Exo get _exo => playback.exo!;
 
 /// Tam ekran oynatıcı — kumanda tuşları:
 /// Canlı: ▲▼ kanal · ◀ kanal listesi · ▶ ses/altyazı · OK bilgi
@@ -48,8 +48,11 @@ class _TvPlayerState extends State<TvPlayer> {
   void _showOsd() {
     setState(() => osd = true);
     _osdTimer?.cancel();
-    _osdTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) setState(() => osd = false);
+    _osdTimer = Timer(const Duration(seconds: 5), () {
+      // duraklatılmışken kontroller ekranda kalsın
+      if (!mounted) return;
+      if (!playback.isLive && !_exo.playing) return;
+      setState(() => osd = false);
     });
   }
 
@@ -60,13 +63,13 @@ class _TvPlayerState extends State<TvPlayer> {
 
   /// İleri/geri sarma: tuşa her basışta hedef birikir, kısa bekleme sonrası tek seferde atlar (sunucuyu yormaz).
   void _seek(int dir, bool repeat) {
-    final p = playback.player;
+    final p = _exo;
     _repeat = repeat ? _repeat + 1 : 0;
     final step = _repeat > 20 ? 60 : (_repeat > 8 ? 30 : 10);
-    final base = _seekTarget ?? p.state.position;
+    final base = _seekTarget ?? p.position;
     var t = base + Duration(seconds: step * dir);
     if (t < Duration.zero) t = Duration.zero;
-    if (p.state.duration > Duration.zero && t > p.state.duration) t = p.state.duration - const Duration(seconds: 2);
+    if (p.duration > Duration.zero && t > p.duration) t = p.duration - const Duration(seconds: 2);
     setState(() => _seekTarget = t);
     _showOsd();
     _seekTimer?.cancel();
@@ -77,15 +80,27 @@ class _TvPlayerState extends State<TvPlayer> {
     });
   }
 
+  void _toggle() {
+    _exo.toggle();
+    _showOsd();
+  }
+
+  void _seekTo(Duration t) {
+    _seekTimer?.cancel();
+    setState(() => _seekTarget = null);
+    _exo.seek(t);
+    _showOsd();
+  }
+
   KeyEventResult _key(FocusNode n, KeyEvent e) {
     if (panel != _Panel.none) return KeyEventResult.ignored;
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
     final live = playback.isLive;
     final rep = e is KeyRepeatEvent;
-    final p = playback.player;
+    final p = _exo;
     if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.mediaPlayPause) {
-      if (!live && !rep) p.playOrPause();
+      if (!live && !rep) _toggle();
       _showOsd();
     } else if (k == LogicalKeyboardKey.mediaPlay) {
       p.play();
@@ -143,38 +158,46 @@ class _TvPlayerState extends State<TvPlayer> {
           focusNode: focus,
           autofocus: true,
           onKeyEvent: _key,
-          child: ListenableBuilder(
-            listenable: playback,
-            builder: (context, _) => Stack(
-              fit: StackFit.expand,
-              children: [
-                Video(
-                  controller: playback.video,
-                  controls: NoVideoControls,
-                  fill: Colors.black,
-                  subtitleViewConfiguration: SubtitleViewConfiguration(
-                    style: TextStyle(
-                      fontSize: store.subSize * 0.75,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Poppins',
-                      shadows: const [
-                        Shadow(blurRadius: 6, color: Colors.black),
-                        Shadow(offset: Offset(1, 1), blurRadius: 2),
+          child: MouseRegion(
+            onHover: (_) {
+              if (!osd) _showOsd();
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => osd ? setState(() => osd = false) : _showOsd(),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const ExoView(),
+                  ListenableBuilder(
+                    listenable: Listenable.merge([playback, _exo]),
+                    builder: (context, _) => Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        const _Buffering(),
+                        IgnorePointer(
+                          ignoring: !(osd || _seekTarget != null),
+                          child: AnimatedOpacity(
+                            opacity: osd || _seekTarget != null ? 1 : 0,
+                            duration: const Duration(milliseconds: 220),
+                            child: _Osd(
+                              seekTarget: _seekTarget,
+                              onToggle: _toggle,
+                              onSeekBy: (s) => _seekTo(_exo.position + Duration(seconds: s)),
+                              onSeekTo: _seekTo,
+                              onTracks: () => setState(() => panel = _Panel.tracks),
+                              onChannels: () => setState(() => panel = _Panel.channels),
+                              onBack: () => Navigator.of(context).maybePop(),
+                            ),
+                          ),
+                        ),
+                        if (panel == _Panel.channels) _ChannelPanel(onClose: _closePanel),
+                        if (panel == _Panel.tracks) _TrackPanel(onClose: _closePanel),
                       ],
                     ),
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 36),
                   ),
-                ),
-                const _Buffering(),
-                AnimatedOpacity(
-                  opacity: osd || _seekTarget != null ? 1 : 0,
-                  duration: const Duration(milliseconds: 220),
-                  child: _Osd(seekTarget: _seekTarget),
-                ),
-                if (panel == _Panel.channels) _ChannelPanel(onClose: _closePanel),
-                if (panel == _Panel.tracks) _TrackPanel(onClose: _closePanel),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -186,11 +209,9 @@ class _TvPlayerState extends State<TvPlayer> {
 class _Buffering extends StatelessWidget {
   const _Buffering();
   @override
-  Widget build(BuildContext context) => StreamBuilder<bool>(
-    stream: playback.player.stream.buffering,
-    initialData: playback.player.state.buffering,
-    builder: (_, s) {
-      if (s.data != true && playback.status.isEmpty) return const SizedBox.shrink();
+  Widget build(BuildContext context) => Builder(
+    builder: (_) {
+      if (!_exo.buffering && playback.status.isEmpty) return const SizedBox.shrink();
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -209,11 +230,35 @@ class _Buffering extends StatelessWidget {
 
 class _Osd extends StatelessWidget {
   final Duration? seekTarget;
-  const _Osd({this.seekTarget});
+  final VoidCallback onToggle, onTracks, onChannels, onBack;
+  final ValueChanged<int> onSeekBy;
+  final ValueChanged<Duration> onSeekTo;
+  const _Osd({
+    this.seekTarget,
+    required this.onToggle,
+    required this.onSeekBy,
+    required this.onSeekTo,
+    required this.onTracks,
+    required this.onChannels,
+    required this.onBack,
+  });
+
+  Widget _btn(IconData i, String tip, VoidCallback f, {double size = 28}) => Tooltip(
+    message: tip,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(30),
+      canRequestFocus: false,
+      onTap: f,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(i, size: size),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final p = playback.player;
+    final p = _exo;
     final live = playback.isLive;
     return Column(
       children: [
@@ -288,51 +333,94 @@ class _Osd extends StatelessWidget {
             ),
           ),
           child: live
-              ? const Text(
-                  '▲ ▼ kanal  ·  ◀ kanal listesi  ·  ▶ ses / altyazı / kalite  ·  Geri: çıkış',
-                  style: TextStyle(color: Colors.white70, fontSize: 12.5),
+              ? Row(
+                  children: [
+                    _btn(Icons.arrow_back_rounded, 'Çıkış', onBack),
+                    _btn(Icons.list_rounded, 'Kanal listesi', onChannels),
+                    _btn(Icons.subtitles_rounded, 'Ses / altyazı / kalite', onTracks),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        '▲ ▼ kanal  ·  ◀ kanal listesi  ·  ▶ ses / altyazı / kalite  ·  Geri: çıkış',
+                        style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                      ),
+                    ),
+                  ],
                 )
-              : StreamBuilder<Duration>(
-                  stream: p.stream.position,
-                  builder: (_, __) {
-                    final dur = p.state.duration;
-                    final pos = seekTarget ?? p.state.position;
+              : Builder(
+                  builder: (_) {
+                    final dur = p.duration;
+                    final pos = seekTarget ?? p.position;
                     final frac = dur.inMilliseconds <= 0 ? 0.0 : pos.inMilliseconds / dur.inMilliseconds;
-                    final buf = dur.inMilliseconds <= 0 ? 0.0 : p.state.buffer.inMilliseconds / dur.inMilliseconds;
+                    final buf = dur.inMilliseconds <= 0 ? 0.0 : p.buffered.inMilliseconds / dur.inMilliseconds;
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
-                          height: 6,
-                          child: Stack(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3)),
-                              ),
-                              FractionallySizedBox(
-                                widthFactor: buf.clamp(0, 1),
-                                child: Container(
-                                  decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(3)),
+                        LayoutBuilder(
+                          builder: (context, c) {
+                            void jump(double x) {
+                              if (dur <= Duration.zero) return;
+                              onSeekTo(Duration(milliseconds: (dur.inMilliseconds * (x / c.maxWidth).clamp(0.0, 1.0)).round()));
+                            }
+
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTapUp: (d) => jump(d.localPosition.dx),
+                              onHorizontalDragEnd: null,
+                              onHorizontalDragUpdate: (d) => jump(d.localPosition.dx),
+                              child: SizedBox(
+                                height: 22,
+                                child: Center(
+                                  child: SizedBox(
+                                    height: 6,
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Container(
+                                          decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3)),
+                                        ),
+                                        FractionallySizedBox(
+                                          widthFactor: buf.clamp(0, 1),
+                                          child: Container(
+                                            decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(3)),
+                                          ),
+                                        ),
+                                        FractionallySizedBox(
+                                          widthFactor: frac.clamp(0, 1),
+                                          child: Container(
+                                            decoration: BoxDecoration(gradient: kFireGradient, borderRadius: BorderRadius.circular(3)),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          left: (c.maxWidth * frac.clamp(0, 1)) - 7,
+                                          top: -4,
+                                          child: Container(
+                                            width: 14,
+                                            height: 14,
+                                            decoration: const BoxDecoration(color: kGold, shape: BoxShape.circle),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                              FractionallySizedBox(
-                                widthFactor: frac.clamp(0, 1),
-                                child: Container(
-                                  decoration: BoxDecoration(gradient: kFireGradient, borderRadius: BorderRadius.circular(3)),
-                                ),
-                              ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
-                            StreamBuilder<bool>(
-                              stream: p.stream.playing,
-                              initialData: p.state.playing,
-                              builder: (_, s) => Icon(s.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 26),
+                            _btn(Icons.replay_10_rounded, '10 sn geri', () => onSeekBy(-10)),
+                            _btn(
+                              p.playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                              p.playing ? 'Duraklat' : 'Oynat',
+                              onToggle,
+                              size: 40,
                             ),
-                            const SizedBox(width: 8),
+                            _btn(Icons.forward_10_rounded, '10 sn ileri', () => onSeekBy(10)),
+                            _btn(Icons.forward_30_rounded, '30 sn ileri', () => onSeekBy(30)),
+                            const SizedBox(width: 10),
                             Text(
                               '${fmtDur(pos)} / ${fmtDur(dur)}',
                               style: TextStyle(
@@ -342,10 +430,10 @@ class _Osd extends StatelessWidget {
                               ),
                             ),
                             const Spacer(),
-                            const Text(
-                              '◀ ▶ sar  ·  OK oynat/duraklat  ·  ▲ ses / altyazı / kalite',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
-                            ),
+                            const Text('◀ ▶ sar · OK duraklat · ▲ menü', style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+                            const SizedBox(width: 8),
+                            _btn(Icons.subtitles_rounded, 'Ses / altyazı / kalite', onTracks),
+                            _btn(Icons.arrow_back_rounded, 'Çıkış', onBack),
                           ],
                         ),
                       ],
@@ -417,12 +505,35 @@ class _TrackPanel extends StatelessWidget {
   final VoidCallback onClose;
   const _TrackPanel({required this.onClose});
 
+  String _label(ExoTrack t, int i) {
+    final parts = <String>[];
+    if ((t.label ?? '').isNotEmpty) parts.add(t.label!);
+    if ((t.lang ?? '').isNotEmpty && t.lang != 'und') parts.add(langName(t.lang!));
+    if (t.h != null) parts.add('${t.h}p');
+    if (t.ch != null) parts.add(t.ch == 6 ? '5.1' : (t.ch == 2 ? 'Stereo' : '${t.ch} kanal'));
+    if ((t.codec ?? '').isNotEmpty) parts.add(t.codec!.split('/').last.toUpperCase());
+    return parts.isEmpty ? '${t.type == 'sub' ? 'Altyazı' : 'İz'} ${i + 1}' : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final p = playback.player;
-    final t = p.state.tracks;
-    final sel = p.state.track;
-    Widget section(String title, List<Object> list, String curId, void Function(Object) pick, String kind) {
+    final e = _exo;
+    Widget row(String text, bool sel, VoidCallback f) => TvRow(
+      selected: sel,
+      onTap: () {
+        f();
+        onClose();
+      },
+      child: Row(
+        children: [
+          Icon(Icons.check_rounded, size: 18, color: sel ? kFire : Colors.transparent),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13.5))),
+        ],
+      ),
+    );
+    Widget section(String title, String type) {
+      final list = e.tracks.where((t) => t.type == type).toList();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -433,27 +544,16 @@ class _TrackPanel extends StatelessWidget {
               style: const TextStyle(color: kDim, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1),
             ),
           ),
-          if (list.isEmpty)
+          if (type == 'sub') row('Kapalı', e.subOff || !list.any((t) => t.sel), () => e.selectTrack('sub', 'off')),
+          if (type == 'video' && list.length > 1) row('Otomatik', false, () => e.selectTrack('video', 'auto')),
+          if (list.isEmpty && type != 'sub')
             const Padding(
               padding: EdgeInsets.all(8),
               child: Text('Seçenek yok', style: TextStyle(color: kDim)),
             )
           else
             for (var i = 0; i < list.length; i++)
-              TvRow(
-                selected: trackInfo(list[i]).id == curId,
-                onTap: () {
-                  pick(list[i]);
-                  onClose();
-                },
-                child: Row(
-                  children: [
-                    Icon(Icons.check_rounded, size: 18, color: trackInfo(list[i]).id == curId ? kFire : Colors.transparent),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(trackLabel(list[i], i, kind), style: const TextStyle(fontSize: 13.5))),
-                  ],
-                ),
-              ),
+              row(_label(list[i], i), list[i].sel && !(type == 'sub' && e.subOff), () => e.selectTrack(type, list[i].id)),
         ],
       );
     }
@@ -468,9 +568,19 @@ class _TrackPanel extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              section('SES', t.audio, sel.audio.id, (x) => p.setAudioTrack(x as AudioTrack), 'audio'),
-              section('ALTYAZI', t.subtitle, sel.subtitle.id, (x) => p.setSubtitleTrack(x as SubtitleTrack), 'sub'),
-              section('KALİTE / GÖRÜNTÜ', t.video, sel.video.id, (x) => p.setVideoTrack(x as VideoTrack), 'video'),
+              section('SES', 'audio'),
+              section('ALTYAZI', 'sub'),
+              section('KALİTE / GÖRÜNTÜ', 'video'),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(8, 14, 8, 6),
+                child: Text(
+                  'GÖRÜNTÜ ORANI',
+                  style: TextStyle(color: kDim, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1),
+                ),
+              ),
+              row('Sığdır', false, () => e.setFit('fit')),
+              row('Ekranı doldur (kırp)', false, () => e.setFit('zoom')),
+              row('Uzat', false, () => e.setFit('fill')),
             ],
           ),
         ),
