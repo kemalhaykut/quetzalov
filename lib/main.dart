@@ -14,7 +14,6 @@ import 'window_ctl.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
   // Android TV (Mi Box): kumandayla kullanılan ayrı arayüz
   if (Platform.isAndroid) {
     final d = await getApplicationSupportDirectory();
@@ -23,6 +22,7 @@ Future<void> main() async {
     runApp(const TvApp());
     return;
   }
+  MediaKit.ensureInitialized();
   await windowManager.ensureInitialized();
   await store.init();
   playback.init();
