@@ -157,6 +157,12 @@ class Playback extends ChangeNotifier {
     notifyListeners();
     final e = exo;
     if (e != null) {
+      // Tek bağlantı izinli hesaplarda önceki kanal bağlantısı kapanmadan yenisi reddediliyor
+      if (isLive) {
+        await e.stop();
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        if (url != u) return; // bu arada başka kanala geçildi
+      }
       await e.open(
         u,
         start: start,
