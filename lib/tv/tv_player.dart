@@ -3,13 +3,46 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../api.dart';
 import '../player.dart';
+import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'exo.dart';
 import 'tv_widgets.dart';
 
 Exo get _exo => playback.exo!;
+
+/// Mi Box: oynatmayı Android'in kendi tam ekran oynatıcısında açar (üstüne Flutter çizilmez → beyaz ekran olmaz).
+/// Oynatma playback.play* ile başlatılmış olmalı. Ekran kapanınca konum kaydedilir ve oynatma durur.
+Future<void> openNativePlayer() async {
+  final e = _exo;
+  final live = playback.isLive;
+  var list = live ? playback.liveList : <Item>[];
+  var idx = live ? list.indexWhere((x) => x.key == playback.item?.key) : 0;
+  if (live && idx < 0 && playback.item != null) {
+    list = [playback.item!];
+    idx = 0;
+  }
+  final alt = store.liveFormat == 'ts' ? 'm3u8' : 'ts';
+  final api = store.api!;
+  final r = await e.launch(
+    live: live,
+    index: idx < 0 ? 0 : idx,
+    title: playback.title,
+    subtitle: playback.subtitle,
+    names: [for (final x in list) x.name],
+    urls: [for (final x in list) api.liveUrl(x.id, ext: store.liveFormat)],
+    alts: [for (final x in list) api.liveUrl(x.id, ext: alt)],
+  );
+  if (r != null) {
+    e.position = Duration(milliseconds: (r['pos'] as num?)?.toInt() ?? 0);
+    e.duration = Duration(milliseconds: (r['dur'] as num?)?.toInt() ?? 0);
+    final i = (r['index'] as num?)?.toInt() ?? 0;
+    if (live && i >= 0 && i < list.length) playback.item = list[i];
+  }
+  await playback.stop();
+}
 
 /// Tam ekran oynatıcı — kumanda tuşları:
 /// Canlı: ▲▼ kanal · ◀ kanal listesi · ▶ ses/altyazı · OK bilgi

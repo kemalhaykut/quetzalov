@@ -133,9 +133,7 @@ class _TvLiveState extends State<TvLive> {
 Future<void> openLive(BuildContext context, Item it, List<Item> list) async {
   playback.liveList = list;
   await playback.playLive(it, list: list);
-  if (context.mounted) {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TvPlayer()));
-  }
+  await openNativePlayer();
 }
 
 class _Hint extends StatelessWidget {

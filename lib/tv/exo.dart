@@ -156,6 +156,33 @@ class Exo extends ChangeNotifier {
   }
 
   Future<void> stop() => _call('stop');
+
+  /// Yerel tam ekran oynatıcıyı açar; kapanınca {pos, dur, index} döner.
+  Future<Map<Object?, Object?>?> launch({
+    required bool live,
+    required int index,
+    required String title,
+    String subtitle = '',
+    List<String> names = const [],
+    List<String> urls = const [],
+    List<String> alts = const [],
+  }) async {
+    try {
+      return await _m.invokeMethod<Map<Object?, Object?>>('launch', {
+        'live': live,
+        'index': index,
+        'title': title,
+        'subtitle': subtitle,
+        'names': names,
+        'urls': urls,
+        'alts': alts,
+      });
+    } catch (e) {
+      debugPrint('exo launch: $e');
+      return null;
+    }
+  }
+
   Future<void> selectTrack(String type, String id) async {
     await _call('track', {'type': type, 'id': id});
     await Future<void>.delayed(const Duration(milliseconds: 300));

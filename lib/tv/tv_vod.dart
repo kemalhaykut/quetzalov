@@ -12,7 +12,7 @@ import 'tv_widgets.dart';
 final Map<Section, String?> _catSel = {};
 final Map<String, SeriesInfo> _seriesCache = {};
 
-Future<void> _openPlayer(BuildContext context) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TvPlayer()));
+Future<void> _openPlayer(BuildContext context) => openNativePlayer();
 
 Future<void> playMovieTv(BuildContext context, Item m, {bool resume = true}) async {
   await playback.playMovie(m, resume: resume);
