@@ -175,22 +175,18 @@ class _TvPlayerState extends State<TvPlayer> {
                       fit: StackFit.expand,
                       children: [
                         const _Buffering(),
-                        IgnorePointer(
-                          ignoring: !(osd || _seekTarget != null),
-                          child: AnimatedOpacity(
-                            opacity: osd || _seekTarget != null ? 1 : 0,
-                            duration: const Duration(milliseconds: 220),
-                            child: _Osd(
-                              seekTarget: _seekTarget,
-                              onToggle: _toggle,
-                              onSeekBy: (s) => _seekTo(_exo.position + Duration(seconds: s)),
-                              onSeekTo: _seekTo,
-                              onTracks: () => setState(() => panel = _Panel.tracks),
-                              onChannels: () => setState(() => panel = _Panel.channels),
-                              onBack: () => Navigator.of(context).maybePop(),
-                            ),
+                        // Not: video üstünde saydamlık animasyonu (Opacity) bazı kutularda ekranı beyaz yapıyor;
+                        // bu yüzden kontroller doğrudan açılıp kapanıyor.
+                        if (osd || _seekTarget != null)
+                          _Osd(
+                            seekTarget: _seekTarget,
+                            onToggle: _toggle,
+                            onSeekBy: (s) => _seekTo(_exo.position + Duration(seconds: s)),
+                            onSeekTo: _seekTo,
+                            onTracks: () => setState(() => panel = _Panel.tracks),
+                            onChannels: () => setState(() => panel = _Panel.channels),
+                            onBack: () => Navigator.of(context).maybePop(),
                           ),
-                        ),
                         if (panel == _Panel.channels) _ChannelPanel(onClose: _closePanel),
                         if (panel == _Panel.tracks) _TrackPanel(onClose: _closePanel),
                       ],
@@ -211,7 +207,7 @@ class _Buffering extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Builder(
     builder: (_) {
-      if (!_exo.buffering && playback.status.isEmpty) return const SizedBox.shrink();
+      if (_exo.playing || (!_exo.buffering && playback.status.isEmpty)) return const SizedBox.shrink();
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -243,16 +239,12 @@ class _Osd extends StatelessWidget {
     required this.onBack,
   });
 
-  Widget _btn(IconData i, String tip, VoidCallback f, {double size = 28}) => Tooltip(
-    message: tip,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(30),
-      canRequestFocus: false,
-      onTap: f,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Icon(i, size: size),
-      ),
+  Widget _btn(IconData i, String tip, VoidCallback f, {double size = 28}) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: f,
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Icon(i, size: size, semanticLabel: tip),
     ),
   );
 
@@ -263,14 +255,8 @@ class _Osd extends StatelessWidget {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(28, 18, 28, 30),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xDD000000), Colors.transparent],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
+          padding: const EdgeInsets.fromLTRB(28, 14, 28, 14),
+          color: const Color(0xFF0B0B10),
           child: Row(
             children: [
               if (live)
@@ -324,14 +310,8 @@ class _Osd extends StatelessWidget {
         ),
         const Spacer(),
         Container(
-          padding: const EdgeInsets.fromLTRB(28, 30, 28, 20),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.transparent, Color(0xDD000000)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 14),
+          color: const Color(0xFF0B0B10),
           child: live
               ? Row(
                   children: [
@@ -459,7 +439,7 @@ class _ChannelPanel extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Container(
         width: 330,
-        color: const Color(0xF0101016),
+        color: const Color(0xFF101016),
         child: FocusScope(
           autofocus: true,
           child: ListView.builder(
@@ -562,7 +542,7 @@ class _TrackPanel extends StatelessWidget {
       alignment: Alignment.centerRight,
       child: Container(
         width: 340,
-        color: const Color(0xF0101016),
+        color: const Color(0xFF101016),
         child: FocusScope(
           autofocus: true,
           child: ListView(

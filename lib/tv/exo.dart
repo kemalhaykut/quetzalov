@@ -21,7 +21,6 @@ class ExoTrack {
 
 class Exo extends ChangeNotifier {
   static const _m = MethodChannel('qz/player');
-  static const _e = EventChannel('qz/player/events');
 
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
@@ -35,43 +34,77 @@ class Exo extends ChangeNotifier {
   final _ended = StreamController<void>.broadcast();
   Stream<String> get errors => _errors.stream;
   Stream<void> get ended => _ended.stream;
-  StreamSubscription<dynamic>? _sub;
 
+  Timer? _poll;
+  int _errSeq = 0, _endSeq = 0, _trkSeq = -1;
+  bool _polling = false;
+
+  /// Oynatıcı durumunu 400 ms'de bir yerel taraftan sorar.
   void init() {
-    _sub = _e.receiveBroadcastStream().listen(_on, onError: (Object e) => debugPrint('exo olay: $e'));
+    _poll = Timer.periodic(const Duration(milliseconds: 400), (_) => _tick());
   }
 
-  void _on(dynamic ev) {
-    if (ev is! Map) return;
-    switch (ev['t']) {
-      case 'pos':
-        position = Duration(milliseconds: (ev['pos'] as num?)?.toInt() ?? 0);
-        duration = Duration(milliseconds: (ev['dur'] as num?)?.toInt() ?? 0);
-        buffered = Duration(milliseconds: (ev['buf'] as num?)?.toInt() ?? 0);
-        playing = ev['playing'] == true;
-        buffering = ev['buffering'] == true;
-      case 'tracks':
-        subOff = ev['subOff'] == true;
-        tracks = [
-          for (final t in (ev['list'] as List? ?? const []))
-            if (t is Map)
-              ExoTrack(
-                '${t['type']}',
-                '${t['id']}',
-                t['label'] as String?,
-                t['lang'] as String?,
-                (t['h'] as num?)?.toInt(),
-                t['codec'] as String?,
-                (t['ch'] as num?)?.toInt(),
-                t['sel'] == true,
-              ),
-        ];
-      case 'error':
-        _errors.add('${ev['msg']}');
-      case 'ended':
+  Future<void> _tick() async {
+    if (_polling) return;
+    _polling = true;
+    try {
+      final st = await _m.invokeMethod<Map<Object?, Object?>>('state');
+      if (st == null) return;
+      Duration ms(Object? v) => Duration(milliseconds: (v as num?)?.toInt() ?? 0);
+      final np = ms(st['pos']), nd = ms(st['dur']), nb = ms(st['buf']);
+      final npl = st['playing'] == true, nbu = st['buffering'] == true;
+      final changed = np != position || nd != duration || nb != buffered || npl != playing || nbu != buffering;
+      position = np;
+      duration = nd;
+      buffered = nb;
+      playing = npl;
+      buffering = nbu;
+      final es = (st['errorSeq'] as num?)?.toInt() ?? 0;
+      if (es != _errSeq) {
+        _errSeq = es;
+        _errors.add('${st['error']}');
+      }
+      final en = (st['endedSeq'] as num?)?.toInt() ?? 0;
+      if (en != _endSeq) {
+        _endSeq = en;
         _ended.add(null);
+      }
+      final ts = (st['tracksSeq'] as num?)?.toInt() ?? 0;
+      if (ts != _trkSeq) {
+        _trkSeq = ts;
+        await refreshTracks();
+      }
+      if (changed) notifyListeners();
+    } catch (e) {
+      debugPrint('exo durum: $e');
+    } finally {
+      _polling = false;
     }
-    notifyListeners();
+  }
+
+  Future<void> refreshTracks() async {
+    try {
+      final r = await _m.invokeMethod<Map<Object?, Object?>>('tracks');
+      if (r == null) return;
+      subOff = r['subOff'] == true;
+      tracks = [
+        for (final t in (r['list'] as List? ?? const []))
+          if (t is Map)
+            ExoTrack(
+              '${t['type']}',
+              '${t['id']}',
+              t['label'] as String?,
+              t['lang'] as String?,
+              (t['h'] as num?)?.toInt(),
+              t['codec'] as String?,
+              (t['ch'] as num?)?.toInt(),
+              t['sel'] == true,
+            ),
+      ];
+      notifyListeners();
+    } catch (e) {
+      debugPrint('exo izler: $e');
+    }
   }
 
   Future<void> _call(String m, [Map<String, Object?>? a]) async {
@@ -123,13 +156,18 @@ class Exo extends ChangeNotifier {
   }
 
   Future<void> stop() => _call('stop');
-  Future<void> selectTrack(String type, String id) => _call('track', {'type': type, 'id': id});
+  Future<void> selectTrack(String type, String id) async {
+    await _call('track', {'type': type, 'id': id});
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await refreshTracks();
+  }
+
   Future<void> setSubSize(double sp) => _call('subSize', {'size': sp});
   Future<void> setFit(String mode) => _call('fit', {'mode': mode});
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 }
