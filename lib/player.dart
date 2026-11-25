@@ -57,19 +57,15 @@ class Playback extends ChangeNotifier {
           }
         }
       });
+      // Canlı yayında yeniden bağlanmayı yerel oynatıcı ekranı (PlayerActivity) kendisi yapar.
+      _subs.add(e.errors.listen((msg) => debugPrint('exo hata: $msg')));
       _subs.add(
-        e.errors.listen((msg) {
-          debugPrint('exo hata: $msg');
-          if (!active || _userStopped) return;
-          if (isLive) {
-            _reconnect('Yayın kesildi, yeniden bağlanıyor…');
-          } else {
-            status = 'Oynatılamadı: $msg';
-            notifyListeners();
-          }
+        e.ended.listen((_) {
+          if (isLive) return;
+          final key = progressKey;
+          if (key != null) store.progress.remove(key);
         }),
       );
-      _subs.add(e.ended.listen((_) => _onEnded()));
       _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
       return;
     }
